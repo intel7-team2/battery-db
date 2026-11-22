@@ -110,10 +110,11 @@
 
 - [x] Oracle 가입. 서울은 가입 때 선택할 수 없어서 홈 리전이 **오사카(ap-osaka-1)**로 됨 (11/20). 한국에서 약 30 ms
 - [x] 네트워크: VCN `battery-vcn`, 인터넷 게이트웨이, 공개 서브넷 `battery-public` (11/20, OCI CLI로 생성)
-- [ ] 오사카 A1 VM: 11/20 "Out of capacity". 자원이 날 때까지 2분마다 자동 재시도 중 (2/12와 1/6 번갈아)
+- [ ] 오사카 A1 VM: 11/20 "Out of capacity". 자원이 날 때까지 2분마다 자동 재시도 중 (2/12와 1/6 번갈아). 11/22 현재도 자원 부족, 1/6으로 재시도 중
+- [x] 임시 DB 서버: AMD Micro VM에 PostgreSQL 16, 예약 IP, 6시간 백업, SSH 터널 + Tailscale 예비 (11/21~22). [server.md](server.md)
 - [x] 현재 A1 무료 사양: 2 OCPU / 12 GB (11/20 공식 문서)
 - [ ] Pay As You Go 전환 여부와 예산 알림
-- [ ] 실습실 네트워크에서 VM의 DB 포트로 접속되는지
+- [ ] 실습실 네트워크에서 VM으로 SSH(22번)가 되는지. DB 포트는 인터넷에 열지 않음
 - [ ] 서버 관리 담당자
 
 ## 문서
@@ -122,4 +123,5 @@
 docs/
   README.md    이 문서
   schema.md    ERD, 테이블 정의, 상태 코드, 미정 항목 (11/20 초안)
+  server.md    DB 서버 구성, 접속, 백업, 성능 (11/22)
 ```
