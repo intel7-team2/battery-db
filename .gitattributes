@@ -5,3 +5,4 @@
 *.service  text eol=lf
 Caddyfile* text eol=lf
 requirements.txt text eol=lf
+api/deploy/* text eol=lf
