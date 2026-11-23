@@ -21,11 +21,33 @@ A1이 생기면 `pg_dump`로 옮긴다.
 
 ### 1. SSH 터널 (기본)
 
+| 누구 | SSH 계정 | 할 수 있는 것 | 허용 목록 |
+|---|---|---|---|
+| 관리자 | `ubuntu` | 쉘, sudo, 터널 | `/etc/gh-key-users` |
+| 팀원 | `tunnel` | **DB 포트(5432) 포워딩만.** 쉘·tty·다른 포트 막힘 (`/etc/ssh/sshd_config.d/70-tunnel.conf` + 키마다 `restrict,permitopen`) | `/etc/gh-tunnel-users` |
+
+팀원:
+
 ```powershell
-ssh -i $env:USERPROFILE\.ssh\<키 파일> -N -L 5433:localhost:5432 ubuntu@<서버 IP>
+ssh -N -L 5433:localhost:5432 tunnel@<서버 IP>
 ```
 
-이 창을 켜 둔 동안 `localhost:5433`이 서버 DB로 연결된다. 앱, psql, DBeaver 모두 `localhost:5433`, DB `battery`로 접속한다.
+(키 파일이 기본 위치 `~/.ssh/id_ed25519`가 아니면 `-i <키 파일>` 추가.) 아무것도 안 뜨고 멈춰 있으면 정상이다.
+이 창을 켜 둔 동안 `localhost:5433`이 서버 DB로 연결된다. 앱, psql, DBeaver, Grafana 모두 `localhost:5433`, DB `battery`로 접속한다.
+
+서버 주소와 DB 비밀번호는 저장소에 적지 않는다. 관리자에게 따로 받는다.
+
+### DB 계정
+
+| 계정 | 용도 | 권한 |
+|---|---|---|
+| `reader` | 사람이 조회 (DBeaver, psql) | 모든 테이블·뷰 SELECT |
+| `grafana` | Grafana SCADA 데이터 소스 | `reader`와 같음 + 읽기 전용 트랜잭션, 쿼리 10초 제한, 동시 연결 5개 |
+| `writer_2a` | 2A 수집기 | 2A 테이블 쓰기 (`schema/04_roles.sql`) |
+| `writer_pack` | 팩 라인 | 팩 테이블 쓰기 |
+| `battery` | 관리자 (스키마 변경) | 소유자 |
+
+Grafana PostgreSQL 데이터 소스: Host `localhost:5433` (Docker 안이면 `host.docker.internal:5433`), Database `battery`, User `grafana`, TLS `disable` (SSH 터널이 암호화), Version 16.
 
 ### 2. Tailscale (예비)
 
@@ -45,8 +67,10 @@ VM이 5분마다 **등록된 GitHub 계정의 공개 키**(`github.com/<아이�
 
 1. 내 PC에서 키를 만든다: `ssh-keygen -t ed25519`
 2. `.pub` 파일 내용을 GitHub → Settings → SSH and GPG keys에 추가한다.
-3. 관리자가 VM의 `/etc/gh-key-users`에 내 GitHub 아이디를 한 줄 추가한다.
-4. 5분 뒤 접속된다. GitHub에서 키를 지우면 접속도 막힌다.
+3. 관리자가 VM의 `/etc/gh-tunnel-users`(팀원) 또는 `/etc/gh-key-users`(관리자)에 GitHub 아이디를 한 줄 추가한다.
+4. 5분 뒤 접속된다 (바로 하려면 `sudo systemctl start gh-keys.service`). GitHub에서 키를 지우거나 목록에서 빼면 접속도 막힌다.
+
+동기화 스크립트: `/usr/local/bin/sync-gh-keys.sh` (`gh-keys.timer`, 5분마다).
 
 GitHub 계정이 털리면 서버도 열린다. **GitHub 2단계 인증을 켤 것.**
 GitHub에 접속이 안 될 때는 기존 목록을 그대로 둔다. 관리자 키 1개는 고정이라 지워지지 않는다.
@@ -81,8 +105,9 @@ GitHub에 접속이 안 될 때는 기존 목록을 그대로 둔다. 관리자 
 
 ## 아직 안 된 것
 
-- [ ] 스키마 미적용. 지금 DB는 비어 있다. 요구사항이 정해지면 `migrations/001_init.sql`부터 번호 순으로 적용한다
-- [ ] 라인별 계정(`writer_2a`, `writer_pack`, `reader`) 미생성
+- [x] 스키마 적용 (11/23, `schema/`)
+- [x] 라인별 계정 생성 (11/23). 비밀번호는 관리자가 VM에서 `\password <계정>`으로 설정
 - [ ] 실습실 네트워크에서 SSH(22번)가 되는지
-- [ ] 팀원 SSH 키 / Tailscale 공유
+- [x] 팀원 SSH: `tunnel` 계정 (11/23, 포워딩만 되는 것 확인)
+- [ ] Tailscale 공유
 - [ ] A1 VM: 11/22 현재도 "Out of capacity". 1 OCPU / 6 GB로 자동 재시도 중

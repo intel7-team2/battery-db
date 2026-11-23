@@ -9,7 +9,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reader')      THEN CREATE ROLE reader      LOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'writer_2a')   THEN CREATE ROLE writer_2a   LOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'writer_pack') THEN CREATE ROLE writer_pack LOGIN; END IF;
+    -- Grafana(SCADA) 전용. reader 권한을 물려받고, 사람이 쓰는 reader와 따로 끊거나 비밀번호를 바꿀 수 있다
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana')     THEN CREATE ROLE grafana     LOGIN IN ROLE reader; END IF;
 END $$;
+
+-- 대시보드가 무거운 쿼리로 DB(1 GB Micro)를 잡지 않게
+ALTER ROLE grafana CONNECTION LIMIT 5;
+ALTER ROLE grafana SET default_transaction_read_only = on;
+ALTER ROLE grafana SET statement_timeout = '10s';
 
 -- 모두 읽기
 GRANT USAGE ON SCHEMA public TO reader, writer_2a, writer_pack;
