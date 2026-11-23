@@ -3,7 +3,15 @@
 인텔 과정 B 프로젝트 전체가 같이 쓰는 **공통 DB** 저장소. 셀이 전공정에 들어온 순간부터
 팩으로 조립돼 분류될 때까지의 이력을 한 곳에 남긴다.
 
-지금은 `docs/`만 있다. 설계를 팀이 합의하면 SQL 스키마(`schema/`)를 추가한다.
+SQL 스키마는 [`schema/`](../schema/)에 있다 (11/23 초안, 팀 합의 전). 빈 DB에 순서대로 실행한다:
+
+```powershell
+psql -h localhost -p 5433 -U battery -d battery -f schema/01_tables.sql
+psql -h localhost -p 5433 -U battery -d battery -f schema/02_views.sql
+psql -h localhost -p 5433 -U battery -d battery -f schema/03_seed.sql
+# 04_roles.sql은 관리자가 VM에서 postgres 계정으로
+psql -h localhost -p 5433 -U battery -d battery -f schema/test/smoke.sql   # 데이터 안 남김 (ROLLBACK)
+```
 
 ## 쓰는 쪽
 

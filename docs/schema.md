@@ -1,6 +1,20 @@
 # DB 설계 초안 (11/20)
 
 PostgreSQL 기준. 팀이 합의하기 전 초안이라 이름과 형식은 바뀔 수 있다.
+
+> **11/23: SQL로 옮김** → [`schema/`](../schema/). 이 문서와 다르면 SQL이 기준이다.
+> 2A 공정 v2(검사기 4레인·재검 스테이션·2단 비전)에 맞춰 더한 것 (SQL에 `-- [v2]` 표시):
+>
+> - `sim_run`: 가상 시연 1회. 셀 ID = `R<run 4자리>-<PLC 번호 6자리>` (Factory I/O 재시작마다 PLC 번호가 1부터라서)
+> - `station`에 `kind`, `lane`, `sort_order`. 2A 스테이션 코드는 v2 배치 기준으로 바꿈 (`2A-Z2` → `2A-T1`~`T4`, `2A-RT` 등, `03_seed.sql`)
+> - `cell_inspection`: `kind`에 `id_read`, `attempt`(1차/재검), `started_at`, `event_id`. 외관·ID의 `result_code`는 0 OK / 5 대기 / 9 NG
+> - `cell.status`에 `retest`, `cell.run_id`·`plc_no`, `criteria_set`에 `retest_limit`·`changed_by`·`source`
+> - `equipment_state`(설비 상태 전이), `alarm` 추가. 주기값이 아니라 바뀔 때만 1행이라 "이벤트만 쓴다" 규칙과 맞음
+> - `lot.is_held`는 `lot_hold` 트리거가 맞춘다
+> - 뷰 (`02_views.sql`): 런별 수율, 검사기 레인별 NG율, 박스 편차, 순서별 vs 등급별 세트 편차 감소율, LOT 현황, 팩 이력, 설비 상태 시간, 열린 알람
+> - 라인별 쓰기 계정 (`04_roles.sql`): `writer_2a`, `writer_pack`, `reader`
+>
+> 팩 테이블은 이 문서를 그대로 옮겼다. 팩 팀 확인 필요.
 근거: digital-twin-a `docs/interface.md`(측정값 블록·결과 코드), `docs/design-notes.md`(판정·LOT 보류·인계 규칙),
 pack-production `docs/process.md`(팩 공정).
 
