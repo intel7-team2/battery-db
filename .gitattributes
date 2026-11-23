@@ -1,0 +1,7 @@
+# 리눅스(VM)에서 실행·적용되는 파일은 Windows에서 받아도 LF 유지
+*.sh       text eol=lf
+*.py       text eol=lf
+*.sql      text eol=lf
+*.service  text eol=lf
+Caddyfile* text eol=lf
+requirements.txt text eol=lf

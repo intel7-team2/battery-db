@@ -1,0 +1,17 @@
+#!/bin/bash
+# tunnel 계정 SSH 세션 (sshd ForceCommand, 70-tunnel.conf). 설치 위치: /usr/local/bin/tunnel-session
+# 포트 포워딩만 하는 접속(ssh -N)은 여기로 오지 않는다. 명령을 붙인 접속만:
+#   ssh tunnel@<서버> new | info | revoke | help
+# 접속에 쓴 공개 키 → authorized_keys의 "gh:<아이디>" 꼬리표로 본인 GitHub 아이디를 찾는다 (ExposeAuthInfo).
+set -u
+key=$(awk '$1 == "publickey" {print $3; exit}' "${SSH_USER_AUTH:-/dev/null}" 2>/dev/null)
+user=""
+if [ -n "$key" ]; then
+  user=$(grep -F " $key " "$HOME/.ssh/authorized_keys" | grep -oE 'gh:[A-Za-z0-9-]+$' | head -n1)
+  user=${user#gh:}
+fi
+if [ -z "$user" ]; then
+  echo "등록된 GitHub 키로 접속하지 않았습니다." >&2
+  exit 1
+fi
+exec sudo -n /usr/local/bin/battery-api-self "$user" "${SSH_ORIGINAL_COMMAND:-info}"

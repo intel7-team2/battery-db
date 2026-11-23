@@ -9,7 +9,7 @@ SQL 스키마는 [`schema/`](../schema/)에 있다 (11/23 초안, 팀 합의 전
 psql -h localhost -p 5433 -U battery -d battery -f schema/01_tables.sql
 psql -h localhost -p 5433 -U battery -d battery -f schema/02_views.sql
 psql -h localhost -p 5433 -U battery -d battery -f schema/03_seed.sql
-# 04_roles.sql은 관리자가 VM에서 postgres 계정으로
+# 04_roles.sql, 05_api.sql은 관리자가 VM에서 postgres 계정으로
 psql -h localhost -p 5433 -U battery -d battery -f schema/test/smoke.sql   # 데이터 안 남김 (ROLLBACK)
 ```
 

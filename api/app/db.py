@@ -3,6 +3,7 @@
     reader      조회
     writer_2a   2A 쓰기 (API 키 scope write:2a)
     writer_pack 팩 쓰기 (API 키 scope write:pack)
+    api_audit   접근 로그(api_access_log)만 쓰기 (schema/05_api.sql)
 """
 import asyncio
 import json
@@ -11,7 +12,7 @@ import asyncpg
 
 from . import config
 
-ROLES = ("reader", "writer_2a", "writer_pack")
+ROLES = ("reader", "writer_2a", "writer_pack", "api_audit")
 WRITER_FOR_LINE = {"2A": "writer_2a", "PACK": "writer_pack"}
 
 _pools: dict[str, asyncpg.Pool] = {}
@@ -31,12 +32,12 @@ async def pool(role: str = "reader") -> asyncpg.Pool:
         async with _lock:
             p = _pools.get(role)
             if p is None:
-                # 1 GB VM: max_connections=30 중 API가 쓰는 건 최대 8개
+                # 1 GB VM: max_connections=30 중 API가 쓰는 건 최대 9개
                 p = await asyncpg.create_pool(
                     host=config.DB_HOST, port=config.DB_PORT, database=config.DB_NAME,
                     user=role, password=config.db_password(role),
                     min_size=1 if role == "reader" else 0,
-                    max_size=4 if role == "reader" else 2,
+                    max_size={"reader": 4, "api_audit": 1}.get(role, 2),
                     command_timeout=15, init=_init,
                     server_settings={"application_name": "battery-api"},
                 )

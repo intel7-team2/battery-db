@@ -9,6 +9,8 @@
 #   4. DB 접속: 비밀번호 없이 유닉스 소켓 peer 인증. OS 계정 battery-api 만
 #      DB 역할 reader / writer_2a / writer_pack 으로 들어갈 수 있게 pg_ident 매핑
 #   5. systemd 서비스 battery-api (127.0.0.1:8000)
+#   6. 팀원 SSH 계정 tunnel: 포트 포워딩 + 'ssh tunnel@<서버> new' 키 셀프서비스, GitHub 키 동기화
+#   (DB 스키마 05_api.sql은 따로: sudo -u postgres psql -d battery -f schema/05_api.sql)
 set -euo pipefail
 SRC=$(realpath "${1:?usage: install.sh <api dir>}")
 DEST=/opt/battery-api
@@ -42,18 +44,35 @@ EOF
 chmod 755 /usr/local/bin/battery-api-key
 
 # DB peer 매핑 ("local all all peer" 줄보다 위에 있어야 먼저 걸림)
-HBA_LINE='local   battery         reader,writer_2a,writer_pack            peer map=batteryapi'
-if ! grep -q 'map=batteryapi' "$PGDIR/pg_hba.conf"; then
+HBA_LINE='local   battery         reader,writer_2a,writer_pack,api_audit  peer map=batteryapi'
+if grep -q 'map=batteryapi' "$PGDIR/pg_hba.conf"; then
+  # 이전 설치(api_audit 없음) 갱신
+  sed -i '/map=batteryapi/{/api_audit/!s/writer_pack /writer_pack,api_audit /}' "$PGDIR/pg_hba.conf"
+else
   cp "$PGDIR/pg_hba.conf" "$PGDIR/pg_hba.conf.bak-$(date +%F)"
   awk -v l="$HBA_LINE" '!d && /^local[ \t]+all[ \t]+all[ \t]+peer/ {print "# battery-api 서비스 (api/deploy/install.sh)"; print l; d=1} {print}' \
       "$PGDIR/pg_hba.conf" > "$PGDIR/pg_hba.conf.new"
   install -o postgres -g postgres -m 640 "$PGDIR/pg_hba.conf.new" "$PGDIR/pg_hba.conf" && rm "$PGDIR/pg_hba.conf.new"
 fi
-for r in reader writer_2a writer_pack; do
+for r in reader writer_2a writer_pack api_audit; do
   grep -Eq "^batteryapi[[:space:]]+battery-api[[:space:]]+$r\$" "$PGDIR/pg_ident.conf" \
     || echo "batteryapi      battery-api             $r" >> "$PGDIR/pg_ident.conf"
 done
 systemctl reload postgresql
+
+# 팀원 SSH 계정 tunnel (쉘은 ForceCommand로 막고, 명령 접속은 tunnel-session만)
+id tunnel >/dev/null 2>&1 || useradd --system --create-home --home-dir /home/tunnel tunnel
+usermod -s /bin/bash tunnel   # ForceCommand가 로그인 쉘로 실행되므로 nologin이면 안 됨
+install -d -o tunnel -g tunnel -m 700 /home/tunnel/.ssh
+touch /etc/gh-tunnel-users /etc/gh-key-users
+install -m 755 "$SRC/deploy/tunnel-session" /usr/local/bin/tunnel-session
+install -m 755 "$SRC/deploy/battery-api-self" /usr/local/bin/battery-api-self
+install -m 755 "$SRC/deploy/sync-gh-keys.sh" /usr/local/bin/sync-gh-keys.sh
+echo 'tunnel ALL=(root) NOPASSWD: /usr/local/bin/battery-api-self' > /etc/sudoers.d/battery-api-self.new
+chmod 440 /etc/sudoers.d/battery-api-self.new
+visudo -cqf /etc/sudoers.d/battery-api-self.new && mv /etc/sudoers.d/battery-api-self.new /etc/sudoers.d/battery-api-self
+install -m 644 "$SRC/deploy/70-tunnel.conf" /etc/ssh/sshd_config.d/70-tunnel.conf
+sshd -t && systemctl reload ssh
 
 # 서비스
 install -m 644 "$SRC/deploy/battery-api.service" /etc/systemd/system/battery-api.service

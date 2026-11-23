@@ -51,9 +51,9 @@ async def start_run(body: RunIn, c: Client = Depends(writer)):
     """시험 시작. 돌려받은 run_id를 이후 이벤트에 붙인다 (Factory I/O 재시작마다 새 run)."""
     role = _check_line(c, body.line)
     return await db.fetchrow(
-        """INSERT INTO sim_run (line, purpose, scene_version, ladder_version, note)
-           VALUES ($1, $2, $3, $4, $5) RETURNING run_id, line, purpose, started_at""",
-        body.line, body.purpose, body.scene_version, body.ladder_version, body.note, role=role)
+        """INSERT INTO sim_run (line, purpose, scene_version, ladder_version, note, api_client)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING run_id, line, purpose, started_at, api_client""",
+        body.line, body.purpose, body.scene_version, body.ladder_version, body.note, c.name, role=role)
 
 
 @router.post("/runs/{run_id}/end")
@@ -120,14 +120,14 @@ async def post_events(body: EventBatch, c: Client = Depends(writer)):
     try:
         inserted = await db.fetch(
             """INSERT INTO event_log (event_id, source, station_code, event_type, entity_id,
-                                      run_id, payload, occurred_at)
-               SELECT * FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[],
-                                    $6::int[], $7::jsonb[], $8::timestamptz[])
+                                      run_id, payload, occurred_at, api_client)
+               SELECT u.*, $9 FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[],
+                                          $6::int[], $7::jsonb[], $8::timestamptz[]) AS u
                ON CONFLICT (event_id) DO NOTHING
                RETURNING event_id""",
             [e.event_id for e in ev], [e.source for e in ev], [e.station_code for e in ev],
             [e.event_type for e in ev], [e.entity_id for e in ev], [e.run_id for e in ev],
-            [e.payload for e in ev], [e.occurred_at for e in ev],
+            [e.payload for e in ev], [e.occurred_at for e in ev], c.name,
             role=role)
     except asyncpg.ForeignKeyViolationError as err:
         raise HTTPException(422, f"unknown reference: {err.detail}") from err

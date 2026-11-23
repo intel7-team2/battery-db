@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from fastapi import Depends, HTTPException, Security
+from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from . import config
@@ -23,6 +23,9 @@ SCOPES = {"read", *WRITE_SCOPES}
 class Client:
     name: str
     scopes: frozenset[str]
+    prefix: str = ""
+    created_at: str = ""
+    source: str = "admin"      # admin = 관리자 발급, self = 본인이 SSH로 발급
 
     @property
     def lines(self) -> set[str]:
@@ -45,7 +48,8 @@ def _clients() -> dict[str, Client]:
     if mtime != _cache["mtime"]:
         data = json.loads(config.KEYS_FILE.read_text(encoding="utf-8"))
         _cache["by_hash"] = {
-            k["sha256"]: Client(k["name"], frozenset(k["scopes"]))
+            k["sha256"]: Client(k["name"], frozenset(k["scopes"]), k.get("prefix", ""),
+                                k.get("created_at", ""), k.get("source", "admin"))
             for k in data.get("keys", [])
             if not k.get("revoked_at")
         }
@@ -58,6 +62,7 @@ _bearer = HTTPBearer(auto_error=False, description="Authorization: Bearer bdb_..
 
 
 def client(
+    request: Request,
     key: str | None = Security(_header),
     bearer: HTTPAuthorizationCredentials | None = Security(_bearer),
 ) -> Client:
@@ -67,6 +72,7 @@ def client(
     c = _clients().get(hash_key(key))
     if c is None:
         raise HTTPException(401, "invalid API key", headers={"WWW-Authenticate": "Bearer"})
+    request.state.client_name = c.name  # 접근 로그(audit.py)가 읽음
     return c
 
 

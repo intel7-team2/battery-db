@@ -24,7 +24,7 @@ A1이 생기면 `pg_dump`로 옮긴다.
 | 누구 | SSH 계정 | 할 수 있는 것 | 허용 목록 |
 |---|---|---|---|
 | 관리자 | `ubuntu` | 쉘, sudo, 터널 | `/etc/gh-key-users` |
-| 팀원 | `tunnel` | **DB(5432)·API(8000) 포트 포워딩만.** 쉘·tty·다른 포트 막힘 (`/etc/ssh/sshd_config.d/70-tunnel.conf` + 키마다 `restrict,permitopen`) | `/etc/gh-tunnel-users` |
+| 팀원 | `tunnel` | **DB(5432)·API(8000) 포트 포워딩 + API 키 셀프서비스(`ssh tunnel@<서버 IP> new`).** 쉘·tty·다른 포트 막힘 (`/etc/ssh/sshd_config.d/70-tunnel.conf` + 키마다 `restrict,permitopen`) | `/etc/gh-tunnel-users` |
 
 팀원:
 
@@ -74,7 +74,7 @@ VM이 5분마다 **등록된 GitHub 계정의 공개 키**(`github.com/<아이�
 3. 관리자가 VM의 `/etc/gh-tunnel-users`(팀원) 또는 `/etc/gh-key-users`(관리자)에 GitHub 아이디를 한 줄 추가한다.
 4. 5분 뒤 접속된다 (바로 하려면 `sudo systemctl start gh-keys.service`). GitHub에서 키를 지우거나 목록에서 빼면 접속도 막힌다.
 
-동기화 스크립트: `/usr/local/bin/sync-gh-keys.sh` (`gh-keys.timer`, 5분마다).
+동기화 스크립트: `/usr/local/bin/sync-gh-keys.sh` (`gh-keys.timer`, 5분마다, 원본 [api/deploy/sync-gh-keys.sh](../api/deploy/sync-gh-keys.sh)). 목록에서 빠진 팀원의 API 키도 같이 폐기한다.
 
 GitHub 계정이 털리면 서버도 열린다. **GitHub 2단계 인증을 켤 것.**
 GitHub에 접속이 안 될 때는 기존 목록을 그대로 둔다. 관리자 키 1개는 고정이라 지워지지 않는다.

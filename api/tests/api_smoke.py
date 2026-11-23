@@ -74,6 +74,7 @@ s, b = call("POST", "/runs", WRITE, {"line": "PACK"}); check("2A key cannot star
 s, b = call("GET", "/stations", WRITE);             check("write-only key cannot read -> 403", s == 403, s)
 s, run = call("POST", "/runs", WRITE, {"line": "2A", "purpose": "api-test", "scene_version": "abc123"})
 check("start run -> 201", s == 201 and run["run_id"], (s, run))
+check("run records who started it", run.get("api_client") == "t-write", run)
 rid = run["run_id"]
 
 ev = lambda seq, **kw: {"run_id": rid, "seq": seq, "source": "2A", "station_code": "2A-VIS1",
@@ -102,6 +103,19 @@ s, b = call("POST", "/events", WRITE, {"events": [ev(5)] * 501})
 check("batch over 500 -> 422", s == 422, s)
 s, b = call("POST", f"/runs/{rid}/end", WRITE, {"note": "api smoke"}); check("end run", s == 200 and b["ended_at"], (s, b))
 s, b = call("POST", f"/runs/{rid}/end", WRITE);     check("end again -> 409", s == 409, s)
+
+# 추적: /me, 접근 로그 (2초마다 묶어서 쓰므로 기다림)
+s, b = call("GET", "/me", READ)
+check("/me works with read key", s == 200 and b["name"] == "t-read" and b["scopes"] == ["read"], b)
+s, b = call("GET", "/me")
+check("/me without key -> 401", s == 401, s)
+import time; time.sleep(3)
+s, b = call("GET", "/me", WRITE)
+u = b.get("usage") or {}
+check("/me usage counts this key's writes", s == 200 and u.get("writes", 0) >= 10 and u.get("errors", 0) >= 5, b)
+s, b = call("GET", "/me", READ)
+u = b.get("usage") or {}
+check("/me usage for read key", u.get("requests", 0) >= 15 and u.get("first_seen") != u.get("last_seen"), u)
 
 print(f"\n{'FAILED ' + str(failed) if failed else 'all passed'}")
 sys.exit(1 if failed else 0)

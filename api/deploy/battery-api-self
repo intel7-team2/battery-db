@@ -1,0 +1,5 @@
+#!/bin/sh
+# tunnel 계정이 sudo로 부르는 유일한 명령 (/etc/sudoers.d/battery-api-self). 설치 위치: /usr/local/bin/battery-api-self
+# 인자 검증은 app/keys.py self 가 한다 (아이디 형식, GitHub 허용 목록, 동작 new/info/revoke/help).
+[ $# -eq 2 ] || exit 2
+cd /opt/battery-api && exec /opt/battery-api/venv/bin/python -m app.keys self "$1" "$2"
