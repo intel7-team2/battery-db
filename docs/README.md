@@ -11,6 +11,7 @@ psql -h localhost -p 5433 -U battery -d battery -f schema/02_views.sql
 psql -h localhost -p 5433 -U battery -d battery -f schema/03_seed.sql
 # 04_roles.sql, 05_api.sql은 관리자가 VM에서 postgres 계정으로
 psql -h localhost -p 5433 -U battery -d battery -f schema/test/smoke.sql   # 데이터 안 남김 (ROLLBACK)
+# 화면 개발용 가짜 운전 1회 (purpose='fake', 셀 100개): schema/test/fake_run.sql / 지우기: fake_cleanup.sql
 ```
 
 팀원·수집기는 DB 계정 대신 **API**([`api/`](../api/README.md), API 키 인증)로 읽고 쓰는 것을 기본으로 한다. Grafana만 SQL 직결.

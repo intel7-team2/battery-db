@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from . import audit, config, db, routes_read, routes_write
 from .auth import Client, client
@@ -36,6 +37,11 @@ app.middleware("http")(audit.middleware)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS,
                        allow_methods=["GET", "POST"], allow_headers=["X-API-Key", "Authorization", "Content-Type"])
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse("/docs")
 
 
 @app.get("/health", tags=["meta"])
