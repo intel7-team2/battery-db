@@ -13,6 +13,8 @@ psql -h localhost -p 5433 -U battery -d battery -f schema/03_seed.sql
 psql -h localhost -p 5433 -U battery -d battery -f schema/test/smoke.sql   # 데이터 안 남김 (ROLLBACK)
 ```
 
+팀원·수집기는 DB 계정 대신 **API**([`api/`](../api/README.md), API 키 인증)로 읽고 쓰는 것을 기본으로 한다. Grafana만 SQL 직결.
+
 ## 쓰는 쪽
 
 | 저장소 | 이 DB에 쓰는 것 |

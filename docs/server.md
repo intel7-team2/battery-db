@@ -24,7 +24,7 @@ A1이 생기면 `pg_dump`로 옮긴다.
 | 누구 | SSH 계정 | 할 수 있는 것 | 허용 목록 |
 |---|---|---|---|
 | 관리자 | `ubuntu` | 쉘, sudo, 터널 | `/etc/gh-key-users` |
-| 팀원 | `tunnel` | **DB 포트(5432) 포워딩만.** 쉘·tty·다른 포트 막힘 (`/etc/ssh/sshd_config.d/70-tunnel.conf` + 키마다 `restrict,permitopen`) | `/etc/gh-tunnel-users` |
+| 팀원 | `tunnel` | **DB(5432)·API(8000) 포트 포워딩만.** 쉘·tty·다른 포트 막힘 (`/etc/ssh/sshd_config.d/70-tunnel.conf` + 키마다 `restrict,permitopen`) | `/etc/gh-tunnel-users` |
 
 팀원:
 
@@ -36,6 +36,10 @@ ssh -N -L 5433:localhost:5432 tunnel@<서버 IP>
 이 창을 켜 둔 동안 `localhost:5433`이 서버 DB로 연결된다. 앱, psql, DBeaver, Grafana 모두 `localhost:5433`, DB `battery`로 접속한다.
 
 서버 주소와 DB 비밀번호는 저장소에 적지 않는다. 관리자에게 따로 받는다.
+
+**API(권장):** DB 계정 대신 API 키로 읽고 쓴다. HTTPS `https://<API 도메인>/docs` (터널 불필요, 도메인은 관리자에게). 자세한 건 [api/README.md](../api/README.md).
+인터넷에 열린 포트: 22(SSH 키), 80·443(Caddy → API). 5432는 닫혀 있다.
+DB 터널과 API 터널을 한 번에: `ssh -N -L 5433:localhost:5432 -L 8000:localhost:8000 tunnel@<서버 IP>`.
 
 ### DB 계정
 

@@ -1,0 +1,28 @@
+[Unit]
+Description=battery-db API (FastAPI)
+After=network-online.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=battery-api
+Group=battery-api
+WorkingDirectory=/opt/battery-api
+EnvironmentFile=-/etc/battery-api/env
+# 127.0.0.1만. 외부 공개는 앞에 Caddy(HTTPS)를 둔다
+ExecStart=/opt/battery-api/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --no-server-header
+Restart=on-failure
+RestartSec=3
+MemoryMax=200M
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

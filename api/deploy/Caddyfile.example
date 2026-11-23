@@ -1,0 +1,16 @@
+# /etc/caddy/Caddyfile — API를 HTTPS로 공개 (인증서는 Caddy가 Let's Encrypt로 자동 발급·갱신)
+# <API 도메인> 자리에 실제 도메인. 도메인은 서버 IP로 바로 풀리므로 저장소에는 적지 않는다.
+# 필요: DNS A 레코드 → 서버 IP, Oracle 보안 목록 + VM iptables에서 TCP 80·443 허용
+# 적용: sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+
+<API 도메인> {
+	encode gzip
+	header -Server
+	reverse_proxy 127.0.0.1:8000
+	log {
+		output file /var/log/caddy/api.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
