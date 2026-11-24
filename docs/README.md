@@ -3,6 +3,8 @@
 인텔 과정 B 프로젝트 전체가 같이 쓰는 **공통 DB** 저장소. 셀이 전공정에 들어온 순간부터
 팩으로 조립돼 분류될 때까지의 이력을 한 곳에 남긴다.
 
+> 전체 구조·규칙·제안(미확정)은 [architecture-proposal.md](architecture-proposal.md), AI 에이전트용 요약은 [AGENTS.md](../AGENTS.md).
+
 SQL 스키마는 [`schema/`](../schema/)에 있다 (11/23 초안, 팀 합의 전). 빈 DB에 순서대로 실행한다:
 
 ```powershell
