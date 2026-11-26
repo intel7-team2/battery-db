@@ -41,12 +41,27 @@ class Collector:
         self.mb, self.line, self.port, self.outbox, self.run_id = mb, line, port, outbox, run_id
         self.clock = clock
         self.c = Counters()
+        self.started_at = datetime.now(timezone.utc).isoformat()
         self._key = f"run:{run_id}:last_seq"
         saved = outbox.get_state(self._key)
         self.last_total: int | None = int(saved) if saved is not None else None
         self._torn_seq: int | None = None
         self._torn_count = 0
+        # 수집기가 꺼져 있던 동안의 PLC 넘침도 세려고 마지막으로 본 D2702 값을 outbox에 둔다
+        self._ovf_key = f"run:{run_id}:overflow_raw"
+        saved_ovf = outbox.get_state(self._ovf_key)
+        self._overflow_raw: int | None = int(saved_ovf) if saved_ovf is not None else None
         outbox.set_state("run_id", str(run_id))
+
+    def health(self) -> dict:
+        """POST /collector/health 본문 (outbox 수 포함). 업로드 스레드가 30초마다 보낸다."""
+        s = self.outbox.stats()
+        return {"line": self.line, "run_id": self.run_id, "started_at": self.started_at,
+                "last_poll_at": self.c.last_poll, "polls": self.c.polls, "events": self.c.events,
+                "lost": self.c.lost, "torn_skipped": self.c.torn_skipped, "unmapped": self.c.unmapped,
+                "resyncs": self.c.resyncs, "plc_overflow": self.c.plc_overflow,
+                "outbox_pending": s["pending"], "outbox_dead": s["dead"],
+                "detail": {"last_seq": self.last_total, "last_error": s["last_error"]}}
 
     @property
     def last16(self) -> int:
@@ -101,11 +116,17 @@ class Collector:
         self.c.polls += 1
         self.c.last_poll = now.isoformat()
         h = mbx.header(self.mb, words)
-        if h.overflow != self.c.plc_overflow:
-            if h.overflow > self.c.plc_overflow and self.c.polls > 1:
-                log.error("PLC mailbox overflow count %d → %d (events dropped in PLC)",
-                          self.c.plc_overflow, h.overflow)
-            self.c.plc_overflow = h.overflow
+        # PLC 넘침 수(D2702)는 PLC가 센 누적값. 수집기 시작 뒤 늘어난 만큼만 더한다 (PLC 재시작으로 0이 되면 거기서 다시)
+        if self._overflow_raw is not None and h.overflow != self._overflow_raw:
+            d = (h.overflow - self._overflow_raw) % mbx.WRAP
+            if d > mbx.WRAP // 2:  # 줄어듦 = PLC 재시작
+                d = h.overflow
+            if d:
+                self.c.plc_overflow += d
+                log.error("PLC mailbox overflow: %d more events dropped in PLC (total %d)", d, self.c.plc_overflow)
+        if h.overflow != self._overflow_raw:
+            self._overflow_raw = h.overflow
+            self.outbox.set_state(self._ovf_key, str(h.overflow))
         self._sync(h)
 
         res = mbx.read_new(self.mb, words, self.last16)

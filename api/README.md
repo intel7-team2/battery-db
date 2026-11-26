@@ -50,10 +50,13 @@ curl.exe -H "X-API-Key: bdb_..." "https://<API 도메인>/runs?line=2A"
 | GET | `/boxes/{box_id}` | read | 박스 + 셀 4개 + 인계 |
 | GET | `/lots` | read | LOT 보류·확정 NG |
 | GET | `/alarms/open` | read | 열린 알람 |
+| GET | `/collectors` | read | 수집기별 최신 상태, 누락 수, 끊김(stale) (`v_collector_status`) |
+| GET | `/runs/{run_id}/gaps` | read | 빠진 이벤트 순번 구간 + 단계가 빠진 셀 (`v_event_gaps`, `v_cell_incomplete`) |
 | GET | `/packs/{pack_id}/trace` | read | 팩 → 셀 → 2A 검사값 |
 | POST | `/runs` | write:2a / write:pack | 시험 시작 → `run_id` |
 | POST | `/runs/{run_id}/end` | 같은 라인 write | 시험 끝 |
-| POST | `/events` | write:2a / write:pack | 이벤트 묶음 저장 (초안, 아래) |
+| POST | `/events` | write:2a / write:pack | 이벤트 묶음 저장 (초안, 아래). `seq`는 `event_log.seq`에 저장 |
+| POST | `/collector/health` | write:2a / write:pack | 수집기 상태 1건 (수집기가 30초마다) |
 
 ### `POST /events` (초안)
 
@@ -107,7 +110,8 @@ SELECT * FROM v_api_usage ORDER BY last_seen DESC;
 
 ```bash
 # PC에서: tar -cf - api schema | ssh ubuntu@<서버 IP> 'rm -rf /tmp/api-src && mkdir /tmp/api-src && tar -xf - -C /tmp/api-src'
-sudo -u postgres psql -d battery -f /tmp/api-src/schema/05_api.sql   # 처음 한 번 (여러 번 돌려도 됨)
+sudo -u postgres psql -d battery -f /tmp/api-src/schema/05_api.sql        # 처음 한 번 (여러 번 돌려도 됨)
+sudo -u postgres psql -d battery -f /tmp/api-src/schema/06_collector.sql  # API 0.3 전에 (event_log.seq, collector_health)
 sudo bash /tmp/api-src/api/deploy/install.sh /tmp/api-src/api
 ```
 

@@ -109,6 +109,28 @@ async def alarms_open():
     return await db.fetch("SELECT * FROM v_alarm_open")
 
 
+@router.get("/collectors")
+async def collectors():
+    """수집기별 최신 상태 (v_collector_status). stale = 90초 넘게 보고 없음."""
+    return await db.fetch("SELECT * FROM v_collector_status ORDER BY line, api_client")
+
+
+@router.get("/runs/{run_id}/gaps")
+async def run_gaps(run_id: int):
+    """빠진 이벤트 순번 구간 (v_event_gaps)과 단계가 빠진 셀 (v_cell_incomplete)."""
+    gaps = await db.fetch("SELECT * FROM v_event_gaps WHERE run_id = $1 ORDER BY gap_from", run_id)
+    cells = await db.fetch("SELECT * FROM v_cell_incomplete WHERE run_id = $1 ORDER BY first_at", run_id)
+    # 끝부분 손실 (예: 복원으로 백업 뒤 이벤트가 사라짐)은 구간으로 안 보이므로 수집기가 보고한 마지막 순번과 비교
+    tail = await db.fetchrow(
+        """SELECT (SELECT max(seq) FROM event_log WHERE run_id = $1)                       AS db_max_seq,
+                  (SELECT max((detail->>'last_seq')::bigint) FROM collector_health WHERE run_id = $1) AS collector_last_seq""",
+        run_id)
+    tail_missing = max(0, (tail["collector_last_seq"] or 0) - (tail["db_max_seq"] or 0)) \
+        if tail["collector_last_seq"] is not None else None
+    return {"run_id": run_id, "missing_events": sum(g["missing"] for g in gaps) + (tail_missing or 0),
+            "gaps": gaps, "tail_missing": tail_missing, **tail, "incomplete_cells": cells}
+
+
 @router.get("/packs/{pack_id}/trace")
 async def pack_trace(pack_id: str):
     """팩 → 슬롯 → 셀 → LOT·박스·2A 검사값 (v_pack_trace)."""

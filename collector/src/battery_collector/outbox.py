@@ -124,6 +124,38 @@ class Outbox:
             "UPDATE event SET dead = 1, attempts = attempts + 1, last_error = ? WHERE event_id = ?",
             (error[:500], event_id)))
 
+    # ── 복구 ──
+    def dead_events(self) -> list[tuple[dict, str | None]]:
+        rows = self._conn().execute(
+            "SELECT body, last_error FROM event WHERE dead = 1 ORDER BY run_id, seq").fetchall()
+        return [(json.loads(b), err) for b, err in rows]
+
+    def revive(self, events: list[dict]) -> None:
+        """dead 이벤트를 (고친 내용으로) 다시 보낼 대기열에 넣는다. event_id는 그대로."""
+        self._tx(lambda c: c.executemany(
+            "UPDATE event SET body = ?, dead = 0, sent_at = NULL, last_error = NULL WHERE event_id = ? AND dead = 1",
+            [(json.dumps(e, ensure_ascii=False), e["event_id"]) for e in events]))
+
+    def unsend_since(self, since_iso: str) -> int:
+        """since 이후에 수집했거나 보낸 이벤트를 다시 보낼 대기열로 (DB 복원 뒤). 이미 있는 건 API가 거른다.
+
+        백업에 들어갔는지는 DB에 들어간 시각(sent_at)이 정한다. 인터넷이 끊겨 늦게 보낸 이벤트는
+        수집 시각이 백업 전이어도 백업에 없을 수 있어서 둘 다 본다.
+        """
+        n = 0
+
+        def run(c):
+            nonlocal n
+            n = c.execute("""UPDATE event SET sent_at = NULL
+                             WHERE sent_at IS NOT NULL AND (sent_at >= ? OR created_at >= ?)""",
+                          (since_iso, since_iso)).rowcount
+        self._tx(run)
+        return n
+
+    def oldest_kept(self) -> str | None:
+        r = self._conn().execute("SELECT min(created_at) FROM event").fetchone()
+        return r[0] if r else None
+
     def purge(self, keep_days: int) -> int:
         cut = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat()
         return self._conn().execute("DELETE FROM event WHERE sent_at IS NOT NULL AND sent_at < ?", (cut,)).rowcount

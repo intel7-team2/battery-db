@@ -9,7 +9,7 @@
 | 구성 | 내용 | 자세히 |
 |---|---|---|
 | DB | PostgreSQL 16 하나, DB `battery`, 스키마 `public` 하나에 2A·팩 테이블이 같이 있음. Oracle 무료 VM (1 GB 메모리) | [server.md](server.md), [`schema/`](../schema/) |
-| 스키마 | `01_tables.sql` 테이블 21개, `02_views.sql` 뷰 9개, `03_seed.sql` 스테이션·기준값, `04_roles.sql` 계정, `05_api.sql` API 추적 | [schema.md](schema.md) |
+| 스키마 | `01_tables.sql` 테이블 21개, `02_views.sql` 뷰 9개, `03_seed.sql` 스테이션·기준값, `04_roles.sql` 계정, `05_api.sql` API 추적, `06_collector.sql` 수집기 순번·상태·누락 뷰 (11/26, 브랜치) | [schema.md](schema.md) |
 | DB 계정 | `reader`(조회), `grafana`(조회, 10초 제한, 연결 5개), `writer_2a`, `writer_pack`, `battery`(소유자), `api_audit`(API 내부) | [server.md](server.md) |
 | 접속 | DB 포트(5432)는 인터넷에 닫힘. SSH 터널로만. 팀원 SSH 계정 `tunnel`은 포트 포워딩과 API 키 발급만 가능 | [server.md](server.md) |
 | API | FastAPI, HTTPS 공개. 조회 엔드포인트(뷰 기반), `POST /runs`, `POST /events`(초안). 사람·프로그램마다 API 키 | [`api/README.md`](../api/README.md) |
