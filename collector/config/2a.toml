@@ -1,0 +1,126 @@
+# 2A 라인 수집기 설정.
+# 메일박스 배치는 digital-twin-a docs/2a-data-design.md "PLC → 수집기 전달 방식" 초안을 그대로 따른다.
+# **PLC 담당과 합의 전 가정값이다.** 합의되면 이 파일만 고친다 (코드는 그대로).
+# 비밀(API 키)은 여기 쓰지 않는다: 환경 변수 BATTERY_API_KEY.
+
+line = "2A"                       # event_log.source, API 쓰기 scope (write:2a)
+
+[api]
+base_url    = "https://<API 도메인>"  # 또는 환경 변수 BATTERY_API_URL (우선)
+timeout_s   = 10
+batch_max   = 500                  # API 한도 500
+flush_ms    = 1000                 # 모아서 보내는 주기
+
+[plc]
+backend   = "fake"                 # fake | modbus | mx  (브리지에 넣을 때는 코드에서 port를 직접 줌)
+poll_ms   = 100
+
+[plc.modbus]                       # backend = "modbus"
+host        = "127.0.0.1"
+port        = 502
+device_id   = 1
+d_to_hr     = 0                    # D n → holding register (n - d_to_hr). 모듈 설정에 맞춤
+
+[plc.mx]                           # backend = "mx" (MX Component, GX Simulator2)
+logical_station = 1
+
+[plc.fake]                         # backend = "fake" (PLC 없이 개발·시험)
+cells_per_min = 30
+appearance_ng = 0.05               # 외관 NG 비율
+test_ng       = 0.08               # 전압·저항 NG 비율
+seed          = 7
+
+[outbox]
+path       = "data/2a-outbox.sqlite3"   # 로컬 저장 (인터넷이 끊겨도 쌓임)
+keep_days  = 14                    # 보낸 이벤트를 로컬에 두는 기간
+
+# ── 메일박스 (링 버퍼) ────────────────────────────────
+[mailbox]
+base         = 2700                # D2700
+write_seq    = 0                   # D2700 쓰기 순번 (PLC). 레코드를 다 쓴 뒤에 올린다
+read_seq     = 1                   # D2701 읽은 순번 (수집기가 씀 = ACK)
+overflow     = 2                   # D2702 넘침 횟수 (PLC)
+record_base  = 4                   # D2704부터 레코드
+record_words = 12
+record_count = 8                   # 순번 s의 레코드 = s % 8 번째
+ack          = true                # false면 D2701을 쓰지 않음 (읽기 전용 시험)
+
+# 레코드 안 필드: 이름 = [오프셋, 워드 수]. 2워드는 하위 워드 먼저 (MELSEC 32비트)
+[mailbox.fields]
+seq      = [0, 1]
+event    = [1, 1]
+station  = [2, 1]
+lane     = [3, 1]
+cell_no  = [4, 2]
+lot      = [6, 1]
+result   = [7, 1]
+reason   = [8, 1]
+value1   = [9, 1]
+value2   = [10, 1]
+value3   = [11, 1]
+
+# PLC 스테이션 번호 → station.station_code (03_seed.sql)
+[mailbox.stations]
+1  = "2A-IN"
+2  = "2A-VIS1"
+3  = "2A-VIS2"
+4  = "2A-RJ1"
+11 = "2A-T1"
+12 = "2A-T2"
+13 = "2A-T3"
+14 = "2A-T4"
+20 = "2A-IDC"
+21 = "2A-SORT"
+31 = "2A-LA"
+32 = "2A-LB"
+33 = "2A-LC"
+40 = "2A-RT"
+41 = "2A-RJ2"
+50 = "2A-BOX"
+51 = "2A-OUT"
+
+# PLC 이벤트 코드 → event_type, 대상, value1~3 이름.
+# entity: "cell" → R<run 4자리>-<cell_no 6자리>, "box" → B<run 4자리>-<등급><cell_no 3자리>, "none"
+[mailbox.events.1]
+type = "cell.created"
+entity = "cell"
+[mailbox.events.2]
+type = "cell.id_read"
+entity = "cell"
+[mailbox.events.3]
+type = "cell.appearance"
+entity = "cell"
+[mailbox.events.4]
+type = "cell.scrapped"
+entity = "cell"
+[mailbox.events.5]
+type = "cell.test_start"
+entity = "cell"
+values = ["attempt"]
+[mailbox.events.6]
+type = "cell.test_end"
+entity = "cell"
+values = ["ocv_mv", "ir_mohm", "attempt"]
+[mailbox.events.7]
+type = "cell.id_check"
+entity = "cell"
+[mailbox.events.8]
+type = "cell.sorted"
+entity = "cell"
+[mailbox.events.9]
+type = "cell.packed"
+entity = "cell"
+values = ["box_no", "slot"]
+[mailbox.events.10]
+type = "box.closed"
+entity = "box"
+values = ["spread_mv"]
+[mailbox.events.11]
+type = "box.handoff"
+entity = "box"
+
+# 결과 코드 → 등급 글자 (박스 ID용). interface.md D2302: 1 A, 2 B, 3 C
+[mailbox.grades]
+1 = "A"
+2 = "B"
+3 = "C"

@@ -7,6 +7,7 @@
 2. [docs/server.md](docs/server.md) — 서버·접속·계정·백업
 3. [api/README.md](api/README.md) — API, 키, 추적, 배포, 시험
 4. [schema/](schema/) — `01`~`05` 번호 순서대로 적용하는 SQL
+5. [collector/README.md](collector/README.md) — PLC 메일박스 → API 수집기 (메일박스 배치는 `collector/config/2a.toml`)
 
 ## 꼭 지킬 것
 
@@ -26,4 +27,5 @@
 | 새 라인(예: 2B) 붙이기 | architecture-proposal.md §4 |
 | API 엔드포인트 추가 | `api/app/routes_read.py` / `routes_write.py`, 시험 `api/tests/api_smoke.py` |
 | 서버에 배포 | `api/README.md` "설치·업데이트" (관리자 권한 필요) |
+| 수집기 메일박스 배치 바꾸기 | `collector/config/2a.toml`만 (코드는 그대로). 시험 `collector/tests/` |
 | 화면용 가짜 데이터 | `schema/test/fake_run.sql`, 지우기 `fake_cleanup.sql` |

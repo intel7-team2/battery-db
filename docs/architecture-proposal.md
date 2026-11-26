@@ -16,7 +16,7 @@
 | API 키 | 팀원이 `ssh tunnel@<서버 IP> new`로 직접 발급. 키 이름 = GitHub 아이디 | [`api/README.md`](../api/README.md) |
 | 추적 | 요청마다 `api_access_log`, 키별 요약 `v_api_usage`, API로 쓴 행에 `api_client` | [`api/README.md`](../api/README.md) |
 | 시험 데이터 | `sim_run.purpose = 'fake'` 인 run (현재 run 4). 화면 개발용. `schema/test/fake_cleanup.sql`로 지움 | [`schema/test/`](../schema/test/) |
-| 실제 데이터 | **아직 없음.** 2A 수집기 미완성 (PLC 메일박스 합의 대기) | |
+| 실제 데이터 | **아직 없음.** 2A 수집기 골격은 있음 (가정 메일박스, 가짜 PLC로 시험). PLC 메일박스 합의 대기 | [`collector/`](../collector/README.md) |
 
 서버 IP, 도메인, 비밀번호, API 키는 저장소에 없다. 관리자에게 따로 받는다.
 
