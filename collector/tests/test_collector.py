@@ -162,3 +162,52 @@ def test_plc_reset_resyncs_and_keeps_seq_increasing(mb, tmp_path, clock):
     assert col.c.resyncs == 1
     seqs = [e["seq"] for e in all_events(ob)]
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs) and seqs[-1] > before
+
+
+def test_overflow_count_survives_plc_reset(mb, tmp_path, clock):
+    plc, ob, col = make(mb, tmp_path, clock, cells_per_min=0.0001)
+    ovf = mb.base + mb.overflow
+    plc.mem[ovf] = 5  # PLC가 이미 센 값 (수집기 시작 전) → 세지 않음
+    col.poll_once()
+    plc.mem[ovf] = 7
+    col.poll_once()
+    assert col.c.plc_overflow == 2
+    plc.mem[ovf] = 1  # PLC 재시작 후 다시 1
+    col.poll_once()
+    assert col.c.plc_overflow == 3
+
+
+def test_health_snapshot(mb, tmp_path, clock):
+    plc, ob, col = make(mb, tmp_path, clock)
+    run_for(col, clock, 10)
+    h = col.health()
+    assert h["line"] == "2A" and h["run_id"] == 12 and h["events"] == col.c.events > 0
+    assert h["outbox_pending"] == col.c.events and h["detail"]["last_seq"] == col.last_total
+
+
+def test_resend_dead_after_config_fix(mb, tmp_path, clock):
+    from dataclasses import replace
+    from battery_collector import __main__ as cli
+    import argparse
+    plc, ob, col = make(mb, tmp_path, clock, cells_per_min=0.0001)
+    plc.push({"event": 2, "station": 99, "cell_no": 7})
+    col.poll_once()
+    assert ob.stats()["dead"] == 1
+    fixed_mb = replace(mb, stations={**mb.stations, 99: "2A-IN"})
+
+    class Cfg:
+        mailbox, line, outbox_path = fixed_mb, "2A", tmp_path / "ob.sqlite3"
+    cli.cmd_resend_dead(Cfg, argparse.Namespace(dry_run=False, no_upload=True))
+    s = ob.stats()
+    assert (s["dead"], s["pending"]) == (0, 1)
+    (e,) = ob.next_batch(10)
+    assert e["station_code"] == "2A-IN" and e["entity_id"] == "R0012-000007" and e["seq"] == 1
+
+
+def test_overflow_while_collector_was_down_is_counted(mb, tmp_path, clock):
+    plc, ob, col = make(mb, tmp_path, clock, cells_per_min=0.0001)
+    col.poll_once()  # 시작: 넘침 0 기억
+    plc.mem[mb.base + mb.overflow] = 50  # 수집기가 꺼진 동안 PLC가 50건 버림
+    col2 = Collector(mb, "2A", plc, Outbox(tmp_path / "ob.sqlite3"), 12, clock=lambda: T0)
+    col2.poll_once()
+    assert col2.c.plc_overflow == 50

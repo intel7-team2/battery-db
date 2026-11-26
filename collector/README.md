@@ -75,6 +75,59 @@ $env:BATTERY_API_KEY = "bdb_..."        # write:2a 권한이 있는 키 (관리�
 - 키는 환경 변수로만. 설정 파일·저장소에 쓰지 않는다.
 - outbox 파일: `collector/data/` (git에 안 올라감).
 
+### Factory I/O·래더를 다시 시작할 때 (순서대로)
+
+PLC 메모리가 초기화되면 아직 안 읽은 메일박스 레코드가 사라진다. 그래서:
+
+1. 라인 정지 (새 이벤트가 안 생기게)
+2. `status`에서 `pending`이 0이 될 때까지 기다림 (수집기는 계속 켜 둠)
+3. 수집기 종료 (Ctrl+C) → `end-run --run-id <지금 run>`
+4. Factory I/O·래더 재시작
+5. `run --new-run`
+
+## 누락 확인·복구
+
+수집기는 30초마다 상태를 `POST /collector/health`로 보낸다 (멈출 때 한 번 더). DB에서 이렇게 본다:
+
+| 보고 싶은 것 | 어디 | API |
+|---|---|---|
+| 수집기가 살아 있나, 지금까지 잃은 수 | `v_collector_status` (`stale` = 90초 넘게 보고 없음, `dropped_total` = 잃은 레코드 + 건너뛴 레코드 + PLC 넘침) | `GET /collectors` |
+| DB에 빠진 이벤트 순번 | `v_event_gaps` | `GET /runs/{run_id}/gaps` |
+| 단계가 빠진 셀 (래더가 이벤트를 안 올린 경우 포함) | `v_cell_incomplete` (run이 끝났거나 10분 넘게 소식 없는 셀만) | 같은 응답의 `incomplete_cells` |
+
+PLC가 넘침으로 버린 이벤트는 순번을 받지 못해 `v_event_gaps`에 안 나온다. `plc_overflow`로 본다.
+
+복구:
+
+```powershell
+# 설정에 스테이션 번호 등을 추가한 뒤, dead로 남은 이벤트를 다시 만들어 보냄
+.venv\Scripts\python -m battery_collector resend-dead --config config/2a.toml --dry-run
+.venv\Scripts\python -m battery_collector resend-dead --config config/2a.toml
+
+# DB를 백업에서 복원한 뒤: 백업 시각 이후 수집했거나 보낸 이벤트를 다시 보냄 (이미 있는 건 API가 거름)
+.venv\Scripts\python -m battery_collector replay --config config/2a.toml --since 2026-11-26T09:00+09:00
+```
+
+outbox는 보낸 이벤트를 `keep_days`(14일) 동안 갖고 있다. 백업이 6시간마다라도, 그 사이 이벤트는 `replay`로 다시 채울 수 있다.
+
+**복원 뒤 replay 순서 (관리자):**
+
+1. 수집기를 멈춘다. 복원한다.
+2. 백업 뒤에 만든 run은 복원된 DB에 없다. replay 전에 **같은 run_id로** 다시 넣고 번호 발급기를 맞춘다.
+   안 그러면 다음 `POST /runs`가 같은 번호를 다른 run에 줘서 이벤트가 섞인다.
+   ```sql
+   -- 수집기 PC의 status에 나온 run_id (예: 15)
+   INSERT INTO sim_run (run_id, line, purpose, note) OVERRIDING SYSTEM VALUE
+   VALUES (15, '2A', 'demo', 'restored: recreated after DB restore');
+   SELECT setval(pg_get_serial_sequence('sim_run', 'run_id'), (SELECT max(run_id) FROM sim_run));
+   ```
+3. `replay --since <백업 시각>`.
+
+run이 없으면 수집기는 이벤트를 dead로 만들지 않고 전송을 멈춘 채 1분마다 다시 시도한다 (로그 "not in DB (restored from backup?)").
+
+**한계:** `v_event_gaps`는 사이에 빈 순번만 잡는다. run의 끝부분이 통째로 빠진 경우(복원 손실이 보통 이 모양)는
+`GET /runs/{run_id}/gaps`의 `tail_missing`(수집기가 보고한 마지막 순번 − DB의 마지막 순번)으로 본다.
+
 ## PLC 연결 (`[plc].backend`)
 
 | backend | 언제 | 상태 |
@@ -123,6 +176,17 @@ col.poll_once()
 | 가짜 PLC 120셀/분, 90초 | 이벤트 1,178건 → DB 1,178행, seq 1~1178 빠짐 없음, 셀 179개, 박스 20개 |
 | 같은 1,178건 전부 다시 보냄 | `inserted 0, duplicates 1178` |
 | 수집 중 20초 동안 인터넷 끊김 | 끊긴 동안 outbox에 쌓임(중간 확인 때 203건), 복구 후 전부 전송. 464건 → DB 464행, 잃은 것 0 |
+
+**11/26 누락 확인·복구 시험** (`battery_test`, 스키마 01~06, 이 브랜치 API를 :8001로, 끝나고 지움):
+
+| 시험 | 결과 |
+|---|---|
+| 45초 수집 + 상태 보고 | `GET /collectors`: stale false, events 464, dropped_total 0, outbox_pending 0 |
+| DB에서 seq 50~52 삭제 (중간 손실) | `GET /runs/2/gaps`: missing 3, 구간 (50, 52). 해당 셀이 incomplete에 `created`·`id_read` 빠짐으로 나옴 |
+| `replay --since <수집 시작>` | 464건 다시 보냄 → inserted 3, duplicates 461 → missing 0 |
+| API 스모크 (`api/tests/api_smoke.py`) | 41개 전부 통과 |
+
+`v_cell_incomplete`에 63개가 `packed_or_scrapped` 빠짐으로 남은 것은 정상이다: 45초에 수집을 멈춰서 라인 위에 있던 셀들 (가짜 공정은 셀 하나에 약 35초).
 
 ## 아직 아닌 것
 

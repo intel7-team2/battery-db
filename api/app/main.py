@@ -14,7 +14,7 @@ from fastapi.responses import RedirectResponse
 from . import audit, config, db, routes_read, routes_write
 from .auth import Client, client
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 @asynccontextmanager

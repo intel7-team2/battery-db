@@ -86,9 +86,15 @@ GitHub에 접속이 안 될 때는 기존 목록을 그대로 둔다. 관리자 
 | VM `/var/backups/postgres` | 6시간마다 (UTC 00/06/12/18시) `pg_dump -Fc` | 14일 |
 | 관리자 PC | 6시간마다 + 로그인할 때 VM에서 복사 | 60일 |
 
-최대 6시간치 데이터를 잃을 수 있다. 시험 단계에서는 충분하다.
+백업만으로는 최대 6시간치를 잃는다. 수집기 이벤트는 수집기 PC의 outbox가 14일 갖고 있어서, 복원 뒤
+`replay --since <백업 시각>`으로 다시 채운다. 그 전에 백업 뒤에 만든 run을 같은 run_id로 다시 넣어야 한다
+([collector/README.md](../collector/README.md) "복원 뒤 replay 순서").
+이벤트가 아닌 데이터(API로 직접 쓴 run 등)는 백업 시각까지만 돌아온다.
 
 복원 (터널을 연 PC에서): `pg_restore -h localhost -p 5433 -U battery -d battery --clean --if-exists <파일>.dump`
+
+**복원 시험 (11/26):** 최신 백업(`battery-20261126-0000.dump`)을 VM에서 빈 DB에 복원.
+테이블 22개 행 수가 운영 DB와 같음 (`api_access_log`만 백업 뒤 요청 3건 차이), 뷰 10개 복원. 관리자 PC 사본과 SHA-256 같음. 시험 DB는 지움.
 
 ## 유휴 회수 대응
 

@@ -120,14 +120,14 @@ async def post_events(body: EventBatch, c: Client = Depends(writer)):
     try:
         inserted = await db.fetch(
             """INSERT INTO event_log (event_id, source, station_code, event_type, entity_id,
-                                      run_id, payload, occurred_at, api_client)
-               SELECT u.*, $9 FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[],
-                                          $6::int[], $7::jsonb[], $8::timestamptz[]) AS u
+                                      run_id, payload, occurred_at, seq, api_client)
+               SELECT u.*, $10 FROM unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[],
+                                           $6::int[], $7::jsonb[], $8::timestamptz[], $9::bigint[]) AS u
                ON CONFLICT (event_id) DO NOTHING
                RETURNING event_id""",
             [e.event_id for e in ev], [e.source for e in ev], [e.station_code for e in ev],
             [e.event_type for e in ev], [e.entity_id for e in ev], [e.run_id for e in ev],
-            [e.payload for e in ev], [e.occurred_at for e in ev], c.name,
+            [e.payload for e in ev], [e.occurred_at for e in ev], [e.seq for e in ev], c.name,
             role=role)
     except asyncpg.ForeignKeyViolationError as err:
         raise HTTPException(422, f"unknown reference: {err.detail}") from err
@@ -135,3 +135,41 @@ async def post_events(body: EventBatch, c: Client = Depends(writer)):
     unique = len({e.event_id for e in ev})
     return {"received": len(ev), "inserted": len(inserted), "duplicates": unique - len(inserted),
             "event_ids": [str(e.event_id) for e in ev]}
+
+
+# ── 수집기 상태 (schema/06_collector.sql) ────────────────
+
+class CollectorHealthIn(BaseModel):
+    line: Literal["2A", "PACK"]
+    run_id: int | None = None
+    started_at: AwareDatetime | None = None
+    last_poll_at: AwareDatetime | None = None
+    polls: int = Field(0, ge=0)
+    events: int = Field(0, ge=0)
+    lost: int = Field(0, ge=0)
+    torn_skipped: int = Field(0, ge=0)
+    unmapped: int = Field(0, ge=0)
+    resyncs: int = Field(0, ge=0)
+    plc_overflow: int = Field(0, ge=0)
+    outbox_pending: int = Field(0, ge=0)
+    outbox_dead: int = Field(0, ge=0)
+    upload_backoff_s: float | None = Field(None, ge=0)
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/collector/health", status_code=201)
+async def collector_health(body: CollectorHealthIn, c: Client = Depends(writer)):
+    """수집기 상태 1건 (30초마다). 누락 수는 수집기 프로세스 시작부터 누적. 조회는 GET /collectors."""
+    role = _check_line(c, body.line)
+    try:
+        return await db.fetchrow(
+            """INSERT INTO collector_health (line, run_id, api_client, started_at, last_poll_at, polls, events,
+                                             lost, torn_skipped, unmapped, resyncs, plc_overflow,
+                                             outbox_pending, outbox_dead, upload_backoff_s, detail)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+               RETURNING id, reported_at""",
+            body.line, body.run_id, c.name, body.started_at, body.last_poll_at, body.polls, body.events,
+            body.lost, body.torn_skipped, body.unmapped, body.resyncs, body.plc_overflow,
+            body.outbox_pending, body.outbox_dead, body.upload_backoff_s, body.detail, role=role)
+    except asyncpg.ForeignKeyViolationError as err:
+        raise HTTPException(422, f"unknown reference: {err.detail}") from err

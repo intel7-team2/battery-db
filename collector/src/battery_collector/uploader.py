@@ -11,6 +11,7 @@ import logging
 import random
 import threading
 import time
+from typing import Callable
 
 import httpx
 
@@ -24,8 +25,13 @@ class AuthError(RuntimeError):
     pass
 
 
+class MissingReference(RuntimeError):
+    """API가 run 등 참조를 모른다 (예: DB를 백업에서 복원해 run이 사라짐). 이벤트 잘못이 아니라서 dead로 만들지 않고 멈춘다."""
+
+
 class Uploader:
-    def __init__(self, api: Api, outbox: Outbox, client: httpx.Client | None = None):
+    def __init__(self, api: Api, outbox: Outbox, client: httpx.Client | None = None,
+                 health_fn: Callable[[], dict] | None = None, health_every_s: float = 30.0):
         if not api.base_url or "<" in api.base_url:
             raise ValueError("API URL not set: BATTERY_API_URL or [api].base_url")
         if not api.key:
@@ -37,6 +43,30 @@ class Uploader:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.backoff_s = 0.0
+        self.health_fn = health_fn
+        self.health_every_s = health_every_s
+        self._next_health = 0.0
+
+    def report_health(self) -> bool:
+        """수집기 상태를 POST /collector/health. 실패해도 이벤트 전송에는 영향 없음 (DB에서는 stale로 보임)."""
+        if self.health_fn is None:
+            return False
+        try:
+            body = {**self.health_fn(), "upload_backoff_s": round(self.backoff_s, 1)}
+            r = self.http.post("/collector/health", json=body)
+            if r.status_code != 201:
+                log.warning("health report refused (%d): %s", r.status_code, r.text[:200])
+                return False
+            return True
+        except Exception as e:
+            log.warning("health report failed: %s", e)
+            return False
+
+    def _maybe_health(self) -> None:
+        now = time.monotonic()
+        if self.health_fn is not None and now >= self._next_health:
+            self._next_health = now + self.health_every_s
+            self.report_health()
 
     # ── 한 번 보내기 (시험에서 직접 부름) ──
     def _post(self, events: list[dict]) -> httpx.Response:
@@ -74,6 +104,9 @@ class Uploader:
             r = self._post([e])
             if r.status_code == 200:
                 self.outbox.mark_sent([e["event_id"]])
+            elif r.status_code == 422 and "unknown reference" in r.text:
+                self.outbox.mark_failed([e["event_id"]], f"422: {r.text[:200]}")
+                raise MissingReference(f"run {e['run_id']} not in DB (restored from backup?): {r.text[:200]}")
             elif r.status_code == 422:
                 self.outbox.mark_dead(e["event_id"], f"422: {r.text[:400]}")
                 log.error("dead event seq=%s type=%s: %s", e["seq"], e["event_type"], r.text[:300])
@@ -90,12 +123,13 @@ class Uploader:
     def _loop(self) -> None:
         delay = 0.0
         while not self._stop.is_set():
+            self._maybe_health()  # 밀린 전송을 따라잡는 중에도 상태는 보낸다
             try:
                 n = self.flush_once()
                 delay = 0.0
                 if n == self.api.batch_max:
                     continue  # 밀린 게 더 있음
-            except AuthError as e:
+            except (AuthError, MissingReference) as e:
                 log.error("%s", e)
                 delay = 60.0
             except Exception as e:  # 네트워크, 5xx 등
@@ -121,5 +155,6 @@ class Uploader:
             except Exception as e:
                 log.warning("drain stopped: %s", e)
                 break
+        self.report_health()  # 마지막 상태 (멈춘 시점의 누락 수)
         self.http.close()
         self.outbox.close()
